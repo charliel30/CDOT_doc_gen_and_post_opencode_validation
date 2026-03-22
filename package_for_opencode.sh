@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
 # Packages the documents needed for OpenCode into a zip file.
-# Excludes: .git, CLAUDE.md, output folder contents, this script,
-#           agents_md_templates (framework-only, not needed by OpenCode)
+# Sanitizes the package so OpenCode sees clean source material:
+#   - Renames backward_engineered/ → reference_documents/
+#   - Strips provenance disclaimers from file contents
+#   - Excludes repo-internal files (CLAUDE.md, README.md, etc.)
 #
 # Usage: ./package_for_opencode.sh [output_name]
 #   output_name: optional zip filename (default: opencode_package_YYYY-MM-DD.zip)
@@ -13,24 +15,55 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATE=$(date +%Y-%m-%d)
 OUTPUT_NAME="${1:-opencode_package_${DATE}.zip}"
 
-# Ensure we're in the project root
 cd "$SCRIPT_DIR"
 
 echo "Packaging documents for OpenCode..."
 echo ""
 
-# Create the zip, excluding things OpenCode doesn't need
-zip -r "$OUTPUT_NAME" . \
-    -x ".git/*" \
-    -x ".claude/*" \
-    -x "CLAUDE.md" \
-    -x "output_from_opencode_to_verify/*" \
-    -x "agents_md_templates/*" \
-    -x "package_for_opencode.sh" \
-    -x "$OUTPUT_NAME" \
-    -x "*.zip" \
-    -x ".gitkeep"
+# Work in a temp directory so we can rename/sanitize without touching the repo
+STAGING_DIR=$(mktemp -d)
+trap 'rm -rf "$STAGING_DIR"' EXIT
 
+# Copy everything we want into staging
+rsync -a --exclude='.git' \
+         --exclude='.claude' \
+         --exclude='CLAUDE.md' \
+         --exclude='README.md' \
+         --exclude='output_from_opencode_to_verify' \
+         --exclude='agents_md_templates' \
+         --exclude='package_for_opencode.sh' \
+         --exclude='*.zip' \
+         --exclude='.gitkeep' \
+         . "$STAGING_DIR/"
+
+# Rename backward_engineered/ → reference_documents/
+if [ -d "$STAGING_DIR/backward_engineered" ]; then
+    mv "$STAGING_DIR/backward_engineered" "$STAGING_DIR/reference_documents"
+    echo "  Renamed: backward_engineered/ → reference_documents/"
+fi
+
+# Strip provenance disclaimers from all markdown files
+# These are italic paragraphs (starting with *) that contain telltale phrases
+PROVENANCE_PATTERNS="backward-engineered|backward engineered|reverse-engineered|reverse engineered|reconstructed from|realistic reconstruction"
+find "$STAGING_DIR" -name '*.md' -print0 | while IFS= read -r -d '' file; do
+    # Remove italic disclaimer lines that match provenance language
+    # Matches lines starting with * that contain provenance phrases, plus any
+    # immediately following blank line
+    perl -i -0777 -pe "s/^\*[^\n]*(?:${PROVENANCE_PATTERNS})[^\n]*\*\n\n?//gmi" "$file"
+done
+echo "  Stripped provenance disclaimers from file contents"
+
+# Also update any internal references to the old folder name within file contents
+find "$STAGING_DIR" -name '*.md' -print0 | while IFS= read -r -d '' file; do
+    perl -i -pe 's/backward_engineered/reference_documents/g' "$file"
+done
+echo "  Updated internal folder references"
+
+# Create the zip from the staging directory
+cd "$STAGING_DIR"
+zip -r "$SCRIPT_DIR/$OUTPUT_NAME" . -x '.DS_Store' > /dev/null
+
+cd "$SCRIPT_DIR"
 echo ""
 echo "Created: $SCRIPT_DIR/$OUTPUT_NAME"
 echo ""
