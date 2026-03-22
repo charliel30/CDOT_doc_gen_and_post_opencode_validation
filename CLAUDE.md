@@ -71,6 +71,12 @@ When evaluating OpenCode's output:
 - **Terminology**: Are CDOT-specific terms used correctly per `terms_and_definitions.md`?
 - **No External Data**: The output should contain nothing that couldn't be derived from the provided documents
 
+## Important: Keeping Files in Sync
+
+- **`AGENTS.md` and `agents_md_templates/AGENTS_TEMPLATE.md` must stay in sync.** When you change `AGENTS.md`, always propagate the same structural/behavioral changes to the template (replacing domain-specific content with `{{placeholders}}`). The template is the reusable version of `AGENTS.md` for future projects.
+- **`package_for_opencode.sh` controls what OpenCode sees.** If you add/rename/remove folders in the repo, check whether the script's exclude list or renaming logic needs updating.
+- **`CLAUDE.md` document structure** (the tree diagram below) should be updated if folders are added or renamed.
+
 ## Reference Project
 
 - **Project**: I-70 Floyd Hill to Veterans Memorial Tunnels
