@@ -71,6 +71,15 @@ When evaluating OpenCode's output:
 - **Terminology**: Are CDOT-specific terms used correctly per `terms_and_definitions.md`?
 - **No External Data**: The output should contain nothing that couldn't be derived from the provided documents
 
+### TODO Placeholders: When to Credit, When to Penalize
+
+A `[TODO]` placeholder is **only appropriate when no source data exists** to fill that section. When grading:
+- **Legitimate TODO** (credit for honesty): The section requires data that genuinely does not appear in any source document. Example: leaving Quality Manager name as TODO when no name exists in the source docs.
+- **Lazy TODO** (penalize as incomplete work): The section has a TODO but source data IS available in the provided documents. Example: leaving the Risk Register section as TODO when `project_risk_register.md` exists with full risk data.
+- **False traceability claim**: If the traceability manifest states "NOT IN SOURCE DOCS" for data that IS in the source documents, this is an accuracy error in the manifest itself and should be penalized under Accuracy.
+
+A proposal that leaves everything as TODO would score perfectly on "No External Data" but fail on Completeness. The grader must cross-reference each TODO against the actual source documents to determine which type it is.
+
 ## Important: Keeping Files in Sync
 
 - **`AGENTS.md` and `agents_md_templates/AGENTS_TEMPLATE.md` must stay in sync.** When you change `AGENTS.md`, always propagate the same structural/behavioral changes to the template (replacing domain-specific content with `{{placeholders}}`). The template is the reusable version of `AGENTS.md` for future projects.
