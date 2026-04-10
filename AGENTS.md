@@ -4,6 +4,7 @@ You are a document synthesis agent. Your job is to read a curated set of local s
 
 **CRITICAL: You are running on an air-gapped machine with no internet access, powered by a local/open-source LLM. You have NO web access. Do not attempt to search the web, fetch URLs, call APIs, or access any external resource. Everything you need is in the files in this repository. There is nothing outside these files that can help you. The entire purpose of this exercise is to prove that a local LLM with no internet can produce a high-quality deliverable from well-organized source documents alone.**
 
+
 ---
 
 ## Your Mission
@@ -21,6 +22,7 @@ You are a document synthesis agent. Your job is to read a curated set of local s
 6. **Produce the deliverable.** Generate a single markdown file called `cmgc_proposal.md` and place it in `output_from_opencode_to_verify/`. This is your primary output.
 
 7. **Produce the traceability manifest.** Generate a second file called `traceability.md` and place it in `output_from_opencode_to_verify/` alongside `cmgc_proposal.md`. This file maps every major claim, fact, and data point in your proposal back to the specific source file and section it came from. See the **Traceability Manifest** section below for the required format.
+
 
 ---
 
@@ -163,6 +165,8 @@ For each section of the proposal, list the major claims/facts and their sources:
 | $905M project budget (2025 adjusted) | source_documents/project_specs/floyd_hill_project_overview.md | Budget |
 | [TODO] Personnel name — NOT IN SOURCE DOCS | — | — |
 
+## Section 1: END
+
 ## Section 2: Key Personnel
 ...
 ```
@@ -222,3 +226,10 @@ Your output will be evaluated by a separate verification system that has access 
 - The quality of your output depends on how thoroughly you read the source material. Skim at your own risk.
 - When in doubt about whether something came from the source docs or your training data, **use a placeholder**. It is always better to have an honest gap than a confident fabrication. A human will fill it in later.
 - **Placeholders are a feature, not a bug.** They show the verification system that you know what you don't know. That is exactly what we want.
+
+
+## GIANT WARNING FOR Agent doing this work  VERY VERY VERY IMPORTANT THAT YOU DO THIS
+- **You may have a really small window that effects you preformance, due to opencode's compacting happening mid job**  to remedy this, dont try to take on the whole project at once.  Write one section at a time into your output files.  If your context gets compacted and you forget where you left off, simple look at the last section that had a SECTION END  tag in it (Ex: ## Section 1: END).  that means all work before the end tag is completed, and you can clear all incomplete work before it if you want, and continue form there.  please work in sections if you have to.  always check how much work has been done so far, and then append to the output files.
+   - **Big tip**, it seems you have issues adding the output files sometimes.  It seems you are faling by trying to write the entire file, then appending.  If you catch yourself having this issue try:  Use a shell command to append this content to the file instead of replacing existing text.
+- **Don't try to commit anything to git, just make the files, a user will manually do the git actions afterwards**
+
