@@ -80,6 +80,21 @@ A `[TODO]` placeholder is **only appropriate when no source data exists** to fil
 
 A proposal that leaves everything as TODO would score perfectly on "No External Data" but fail on Completeness. The grader must cross-reference each TODO against the actual source documents to determine which type it is.
 
+### The `temp/` Directory: Optional Forensic Evidence
+
+OpenCode runs that follow the Short-Context Execution Protocol in `AGENTS.md` fan work out across per-unit workers and stage their intermediate files in `output_from_opencode_to_verify/<run>/temp/` (a `plan.md`, plus `<slug>_proposal.md` and `<slug>_traceability.md` per unit). The user may or may not commit this directory for a given run. Both cases are legitimate and neither affects the grade on its own.
+
+When grading:
+
+- **Grade the final merged files first.** `cmgc_proposal.md` and `traceability.md` at the root of the run's folder are the deliverable. Completeness, Accuracy, Format Compliance, Terminology, and No External Data are all judged against those files, exactly as before. The absence of `temp/` is never a penalty — the user simply did not check it in.
+- **If `temp/` is present, use it as forensic context, not as additional scored content.** It lets you answer questions the final files cannot, such as:
+  - Which specific units completed vs. failed, when the final deliverable is partial or missing entries.
+  - Whether `plan.md` correctly enumerated every template-required unit (including unnumbered ones like cover letters, appendices, signature blocks). A plan that omitted required units is a Completeness failure even if every planned unit was produced well.
+  - Whether a unit that looks wrong in the merged file was already wrong in its `<slug>_proposal.md`, or was corrupted during merge. This helps separate worker failures from merger failures in the written summary, but both still count against the same Completeness/Accuracy criteria.
+  - Whether retry files (`<slug>_retry.md`) or sub-unit files (`<slug>__<child>_...md`) exist, indicating the run hit context pressure and how the worker handled it.
+- **Do not double-count.** If a unit is complete in `temp/` but missing from the merged `cmgc_proposal.md`, grade it as missing from the deliverable — the merger is part of the run. You may note in the written summary that the worker did produce the content and the merger dropped it, which is useful diagnostic information for the user, but the Completeness score still reflects the final merged file.
+- **Do not penalize runs that did not use the protocol at all.** Older runs (pre-protocol) have no `temp/` directory and produce their deliverable in a single pass. Grade them normally against the same criteria.
+
 ## Important: Keeping Files in Sync
 
 - **`AGENTS.md` and `agents_md_templates/AGENTS_TEMPLATE.md` must stay in sync.** When you change `AGENTS.md`, always propagate the same structural/behavioral changes to the template (replacing domain-specific content with `{{placeholders}}`). The template is the reusable version of `AGENTS.md` for future projects.

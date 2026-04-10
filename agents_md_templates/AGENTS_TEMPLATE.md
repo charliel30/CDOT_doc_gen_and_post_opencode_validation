@@ -235,6 +235,78 @@ Your output will be evaluated by a separate verification system that has access 
 
 ---
 
+## Short-Context Execution Protocol
+
+Your context window may be small relative to this project, and compaction mid-run is a major failure mode. In a prior run, a model lost the first several sections of its deliverable because it continued past a compaction and its next `Write` call truncated the file. This section tells you how to avoid that.
+
+**Core rule: no single agent should try to hold the entire deliverable in context at once.** Fan the work out across roles, write to disjoint files, and let the filesystem — not any in-file tag or marker — be the source of truth for progress.
+
+### Roles
+
+1. **Coordinator** (first pass). Read the repo, build the source inventory described in Step 5 of your Mission, and write a plan file to `{{OUTPUT_FOLDER}}temp/plan.md`. The plan enumerates every **unit of the deliverable the template requires** — not just numbered sections. A unit is any distinct top-level piece of the final document: cover letter, executive summary, each numbered section, each appendix, signature blocks, attachments, and so on. For each unit the plan records:
+
+   - An `order` integer (1, 2, 3, …) defining the final concatenation order.
+   - A `slug` — a short lowercase filename-safe identifier, e.g. `cover_letter`, `executive_summary`, `section_01_intro`, `section_06_safety`, `appendix_a`, `signature_block`. Numbered sections should zero-pad the number so alphabetical sort matches intended order.
+   - The specific source files that unit should draw from.
+   - Whether the unit requires a traceability file (cover letters, signature blocks, and other content-free units typically do not).
+
+   The coordinator writes no deliverable content. When the plan is done, dispatch per-unit workers.
+
+2. **Per-unit worker** (one per plan entry). Each worker gets a fresh context window and owns exactly one unit. Its only job is to produce one or two files named by the unit's slug:
+   - `{{OUTPUT_FOLDER}}temp/<slug>_deliverable.md`
+   - `{{OUTPUT_FOLDER}}temp/<slug>_traceability.md` (only if the plan marked this unit as requiring traceability)
+
+   For example: `cover_letter_deliverable.md`, `section_06_safety_deliverable.md`, `appendix_a_deliverable.md`. A worker reads only (a) the plan file, (b) the template/example files relevant to its unit, and (c) the source files the plan told it to read. It must not read other workers' temp files, and it must not read the full template end-to-end.
+
+3. **Merger** (final pass). Reads only the temp files and concatenates them **in the order given by `plan.md`** into `{{OUTPUT_FILENAME}}` and `traceability.md` at the root of `{{OUTPUT_FOLDER}}`. The merger does no synthesis and no rewriting — it is a pure concatenation step driven by the plan's `order` field, not by filename sorting or numeric guessing. This handles unnumbered units (cover letters, appendices) correctly and keeps the merger's context usage minimal and deterministic.
+
+The `temp/` directory is **not** cleaned up. It is forensic evidence showing what each worker produced. Leave it in place.
+
+### If a single section is itself too large
+
+A unit's source documents or its required template content may be large enough to blow a single worker's context window on their own. When that happens, the worker applies the same fan-out pattern internally, one level down:
+
+- Break the unit into labeled sub-units using child slugs derived from the parent, with `__` as the parent/child separator: `section_06_safety__org`, `section_06_safety__incidents`, `section_06_safety__hazards`. A cover letter that somehow grew too large would sub-divide as `cover_letter__intro`, `cover_letter__qualifications`, etc.
+- Write each sub-unit to its own temp file: `temp/section_06_safety__org_deliverable.md`, and so on.
+- **Before writing each sub-unit, `ls temp/` and read the filenames to see what is already done.** This is the resumption protocol. After a compaction, the worker re-reads `plan.md` and checks `temp/` to find which sub-units of its unit already exist, then continues from the next missing one.
+- **Never overwrite an existing temp file.** If the file exists, its sub-unit is done. If you think you need to rewrite it, write to a new filename like `section_06_safety__org_retry.md` and note the situation in the plan.
+- When all of a unit's sub-units exist, the worker assembles them into the unit's top-level `<slug>_deliverable.md` file by plain concatenation in the order the worker listed them, then exits. The merger only ever sees top-level unit files, never sub-unit files.
+
+The invariant at every level is the same: **a file exists ⇒ that unit of work is done**. You do not need in-file END tags, progress comments, or any other marker — the filename is the marker.
+
+### Writing files safely
+
+- **One file per unit of work.** Never have two workers or two passes writing to the same file.
+- **`Read` before `Write` on any file that might exist.** If the file has content you did not write in this turn, do not overwrite it. You are either confused about which file this is or you have lost track of prior state. Escalate to a fresh filename instead of clobbering.
+- **Shell-level append (`>>`) is acceptable** for adding content to a file you own within a single worker's lifetime. It is not a substitute for the fan-out pattern.
+
+### If superpowers skills are available
+
+If your environment exposes a `Skill` tool and lists these skills, prefer them over ad-hoc versions of the same pattern:
+
+- `superpowers:subagent-driven-development` and `superpowers:dispatching-parallel-agents` — use these to dispatch per-section workers in parallel.
+- `superpowers:writing-plans` — use this when the coordinator writes `plan.md`.
+- `superpowers:verification-before-completion` — the merger must invoke this before claiming the deliverable is done.
+
+**If your environment does not expose a `Skill` tool or these skills, the protocol above still applies.** The skills formalize the pattern; they do not replace it. A run with no skills available should still follow the coordinator → worker → merger flow and still treat the filesystem as the source of truth for progress.
+
+### Final verification (mandatory, skills or no skills)
+
+Before the run ends, the merger — or the top-level agent if there is no merger — must:
+
+1. `ls {{OUTPUT_FOLDER}}temp/` and confirm a `<slug>_deliverable.md` file exists for every unit listed in `plan.md` (and a `<slug>_traceability.md` for every unit the plan marked as requiring traceability).
+2. Read the assembled `{{OUTPUT_FILENAME}}` and confirm every unit from `plan.md` is present and non-empty, in the correct order.
+3. Read the assembled `traceability.md` and confirm every unit that requires traceability has at least one row.
+4. If any check fails, report exactly what is missing. Do not claim the run is complete.
+
+---
+
+## Git
+
+Do not run any git commands. A human will review the output and handle git actions afterwards.
+
+---
+
 ## Template Placeholders Reference
 
 | Placeholder | Description | Example |
