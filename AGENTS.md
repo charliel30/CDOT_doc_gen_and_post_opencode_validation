@@ -240,24 +240,42 @@ If a tool returns "file not found" for a path that starts with `/`, remove the l
 
 ---
 
-## Working Across Context Compactions
+## Writing Your Output Files — APPEND ONLY
 
-Your context window may be small relative to this project, and OpenCode may compact your context partway through the job. When that happens you will forget what you were doing. The rules in this section exist so you can pick up where you left off without losing or duplicating work.
+Your two output files, `output_from_opencode_to_verify/cmgc_proposal.md` and `output_from_opencode_to_verify/traceability.md`, are **append-only** for the entire run.
 
-**Rule 1: write your deliverable one section at a time.** Do not try to produce `cmgc_proposal.md` and `traceability.md` in a single Write call. Write Section 1 → then Section 2 → then Section 3, and so on.
+**Absolute rule: never use the `Write` tool on either of these two files.** Using `Write` replaces the whole file with your new content and destroys every section you wrote earlier. Every failed run we have debugged failed this way. There are no exceptions — not for "the first section," not for "fixing a typo," not for "cleaning up formatting." Never.
 
-**Rule 2: before you write any section, `Read` the current state of both output files.** The files on disk are your memory. Whatever is already in `cmgc_proposal.md` is work you already completed — even if you do not remember doing it. Identify the highest-numbered section that is present and substantive, and continue from the next one.
+**The only legal way to add content to either output file is a shell heredoc append using `>>`:**
 
-**Rule 3: never overwrite content you did not write in this turn.** If `cmgc_proposal.md` already contains Sections 1 through 4 and you are about to write Section 5, you must **append** Section 5 to the existing file — not replace the file. Safe ways to append:
+```bash
+cat >> output_from_opencode_to_verify/cmgc_proposal.md <<'EOF'
 
-- Read the full current file, then Write the full current file + your new section back out.
-- Or use a shell redirect to append: `cat >> output_from_opencode_to_verify/cmgc_proposal.md <<'EOF' ... EOF`.
+## Section 3: Project Understanding
 
-Do **not** Write the file with only your new section in it. That will destroy the earlier sections and has broken prior runs.
+...your section content here...
 
-**Rule 4: the same rules apply to `traceability.md`.** Build it section-by-section in lockstep with the proposal, so the two files always cover the same set of sections.
+EOF
+```
 
-**Rule 5: no in-file END tags or progress markers are needed.** The presence of Section N's content in the file is what tells you Section N is done.
+Why this works: the `>>` operator physically appends to the existing file at the OS level. It cannot destroy prior content no matter how confused you are about what's already in the file. The single-quoted `'EOF'` prevents shell expansion inside your content. The blank line right after `<<'EOF'` guarantees your `##` header starts on its own line, separated from whatever came before.
+
+**Work one section at a time.** One heredoc append per section. Append Section 1, then Section 2, then Section 3, all the way through Section 10 plus any appendices. Do the same for `traceability.md` in lockstep — after you append a section's proposal content, append that same section's traceability table with another `cat >> .../traceability.md <<'EOF' ... EOF` call.
+
+**Resuming after a context compaction:** if you lose track of where you were, `Read` both output files, find the highest-numbered section that is present and non-empty, and continue appending from the next one. The files on disk are your memory. No END tags or progress markers are needed — the presence of a section's content is what tells you that section is done.
+
+**Forbidden operations on the two output files:**
+
+- ❌ `Write` tool — destroys prior content
+- ❌ Single `>` redirect (one greater-than) — overwrites the file
+- ❌ `echo "..." > file` — overwrites
+- ❌ Trying to write the whole document in one call — fails on short contexts
+- ❌ Writing an empty file at the start to "initialize" it — skip this step, just start appending
+
+**Allowed:**
+
+- ✅ `cat >> file <<'EOF' ... EOF` (the heredoc append shown above)
+- ✅ `Read` on either file to check current state before appending
 
 ---
 
