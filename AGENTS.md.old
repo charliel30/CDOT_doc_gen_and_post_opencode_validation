@@ -227,37 +227,110 @@ Your output will be evaluated by a separate verification system that has access 
 
 ---
 
-## File Paths Are Always Relative
+## Short-Context Execution Protocol
+
+Your context window may be small relative to this project, and compaction mid-run is the single biggest failure mode we have seen. A prior run lost sections 1–6 of its deliverable because the model continued past a compaction and its next `Write` call truncated the file. This section tells you how to avoid that.
+
+**Core rule: no single agent should try to hold the entire deliverable in context at once.** Fan the work out across roles, write to disjoint files, and let the filesystem — not any in-file tag or marker — be the source of truth for progress.
+
+### File paths are always relative to the repo root
 
 Every path in this document and every path you write to disk is **relative to the current working directory** (the root of this repository). Paths never begin with a leading `/`. A leading `/` means "the machine's filesystem root," which on this air-gapped host is a completely different place and contains nothing useful to you.
 
 - ✅ Correct: `source_documents/project_specs/floyd_hill_project_overview.md`
-- ✅ Correct: `output_from_opencode_to_verify/cmgc_proposal.md`
+- ✅ Correct: `output_from_opencode_to_verify/temp/plan.md`
 - ❌ Wrong: `/source_documents/project_specs/floyd_hill_project_overview.md`
+- ❌ Wrong: `/output_from_opencode_to_verify/temp/plan.md`
 - ❌ Wrong: `/Users/...`, `/home/...`, `C:\...`, or any other absolute path
 
-If a tool returns "file not found" for a path that starts with `/`, remove the leading `/` and try again relative to the working directory.
+If a tool returns "file not found" for a path that starts with `/`, the first thing to try is removing the leading `/` and trying again relative to the working directory. Do **not** search the machine's root filesystem, and do **not** try to reconstruct an absolute path — the correct path is always the relative one.
 
----
+### Roles
 
-## Working Across Context Compactions
+1. **Coordinator** (first pass). Read the repo, build the source inventory described in Step 5 of your Mission, and write a plan file to `output_from_opencode_to_verify/temp/plan.md`. The plan enumerates every **unit of the deliverable the template requires** — not just numbered sections. A unit is any distinct top-level piece of the final document: cover letter, executive summary, each numbered section, each appendix, signature blocks, attachments, and so on. For each unit the plan records:
 
-Your context window may be small relative to this project, and OpenCode may compact your context partway through the job. When that happens you will forget what you were doing. The rules in this section exist so you can pick up where you left off without losing or duplicating work.
+   - An `order` integer (1, 2, 3, …) defining the final concatenation order.
+   - A `slug` — a short lowercase filename-safe identifier, e.g. `cover_letter`, `executive_summary`, `section_01_project_understanding`, `section_06_safety`, `appendix_a_resumes`, `signature_block`. Numbered sections should zero-pad the number so alphabetical sort matches intended order.
+   - The specific source files that unit should draw from.
 
-**Rule 1: write your deliverable one section at a time.** Do not try to produce `cmgc_proposal.md` and `traceability.md` in a single Write call. Write Section 1 → then Section 2 → then Section 3, and so on.
+   The coordinator writes no deliverable content. When the plan is done, dispatch per-unit workers.
 
-**Rule 2: before you write any section, `Read` the current state of both output files.** The files on disk are your memory. Whatever is already in `cmgc_proposal.md` is work you already completed — even if you do not remember doing it. Identify the highest-numbered section that is present and substantive, and continue from the next one.
+2. **Per-unit worker** (one per plan entry). Each worker gets a fresh context window and owns exactly one unit. Its only job is to produce two files, named by the unit's slug:
+   - `output_from_opencode_to_verify/temp/<slug>_proposal.md`
+   - `output_from_opencode_to_verify/temp/<slug>_traceability.md`
 
-**Rule 3: never overwrite content you did not write in this turn.** If `cmgc_proposal.md` already contains Sections 1 through 4 and you are about to write Section 5, you must **append** Section 5 to the existing file — not replace the file. Safe ways to append:
+   For example: `cover_letter_proposal.md`, `section_06_safety_proposal.md`, `appendix_a_resumes_proposal.md`. A worker reads only (a) the plan file, (b) the template/example files relevant to its unit, and (c) the source files the plan told it to read. It must not read other workers' temp files, and it must not read the full template end-to-end.
 
-- Read the full current file, then Write the full current file + your new section back out.
-- Or use a shell redirect to append: `cat >> output_from_opencode_to_verify/cmgc_proposal.md <<'EOF' ... EOF`.
+   **Required file format for every worker output file:**
+   - **First line** must be the unit's own top-level header at heading level `##` (h2), matching the template's section naming. Examples: `## Section 3: Project Understanding`, `## Cover Letter`, `## Appendix A: Key Personnel Resumes`. Do **not** use `#` (h1) — that level is reserved for the document title that the merger writes.
+   - **Second line** must be blank.
+   - **Last line** of the file must also be blank (the file must end with a newline followed by an empty line). This is critical — it is what lets the merger concatenate files without gluing the next file's header onto the previous file's last paragraph. A prior run produced output like `...completion in 2029.## Section 2: Key Personnel` because worker files did not end in a blank line. Do not let that happen.
+   - The same header + trailing-blank-line rule applies to `<slug>_traceability.md` files.
 
-Do **not** Write the file with only your new section in it. That will destroy the earlier sections and has broken prior runs.
+   A unit that the template does not require traceability for (e.g. a cover letter or signature block) may skip the `_traceability.md` file; the plan should mark which units need traceability and which do not.
 
-**Rule 4: the same rules apply to `traceability.md`.** Build it section-by-section in lockstep with the proposal, so the two files always cover the same set of sections.
+3. **Merger** (final pass). Reads only the temp files and concatenates them **in the order given by `plan.md`** into `cmgc_proposal.md` and `traceability.md` at the root of `output_from_opencode_to_verify/`. The merger does no synthesis and no rewriting — it is a pure concatenation step driven by the plan's `order` field, not by filename sorting or numeric guessing.
 
-**Rule 5: no in-file END tags or progress markers are needed.** The presence of Section N's content in the file is what tells you Section N is done.
+   **Required merge procedure:**
+   1. Write the document title as the first line of the output file (e.g. `# CM/GC Proposal — I-70 Floyd Hill`), followed by a blank line. The title uses `#` (h1). This is the only h1 in the final document.
+   2. For each unit in plan order, append its `<slug>_proposal.md` contents to the output, followed by a blank line. Then do the same for `<slug>_traceability.md` into `traceability.md`.
+   3. Between every pair of concatenated files, the merger must guarantee at least one blank line. A safe shell recipe is:
+      ```bash
+      { for f in file1.md file2.md file3.md; do cat "$f"; printf '\n\n'; done } > cmgc_proposal.md
+      ```
+      Do **not** use a bare `cat f1 f2 f3 > out`. That fails whenever any source file does not end in a newline, and the failure mode is section headers being glued onto the previous section's last paragraph.
+   4. After writing, `Read` the merged file and confirm the first line of each unit appears on its own line, starting with `##`. If any unit's header is glued to the end of a previous line, the merge is broken — fix it and re-verify before declaring the run done.
+
+The `temp/` directory is **not** cleaned up. It is forensic evidence showing what each worker produced. Leave it in place.
+
+### If a single section is itself too large
+
+A unit's source documents or its required template content may be large enough to blow a single worker's context window on their own. When that happens, the worker applies the same fan-out pattern internally, one level down:
+
+- Break the unit into labeled sub-units using child slugs derived from the parent: `section_06_safety__org`, `section_06_safety__incidents`, `section_06_safety__hazards`. A cover letter that somehow grew too large would sub-divide as `cover_letter__intro`, `cover_letter__qualifications`, etc. The `__` separator distinguishes parent-slug from child-slug.
+- Write each sub-unit to its own temp file: `temp/section_06_safety__org_proposal.md`, and so on.
+- **Before writing each sub-unit, `ls temp/` and read the filenames to see what is already done.** This is the resumption protocol. After a compaction, the worker re-reads `plan.md` and checks `temp/` to find which sub-units of its unit already exist, then continues from the next missing one.
+- **Never overwrite an existing temp file.** If the file exists, its sub-unit is done. If you think you need to rewrite it, write to a new filename like `section_06_safety__org_retry.md` and note the situation in the plan.
+- When all of a unit's sub-units exist, the worker assembles them into the unit's top-level `<slug>_proposal.md` file by plain concatenation in the order the worker listed them, then exits. The merger only ever sees top-level unit files, never sub-unit files.
+
+The invariant at every level is the same: **a file exists ⇒ that unit of work is done**. You do not need in-file END tags, progress comments, or any other marker — the filename is the marker.
+
+### Writing files safely
+
+- **One file per unit of work.** Never have two workers or two passes writing to the same file.
+- **`Read` before `Write` on any file that might exist.** If the file has content you did not write in this turn, do not overwrite it. You are either confused about which file this is or you have lost track of prior state. Escalate to a fresh filename instead of clobbering.
+- **Shell-level append (`>>`) is acceptable** for adding content to a file you own within a single worker's lifetime. It is not a substitute for the fan-out pattern.
+
+### Sequential fallback if you cannot dispatch subagents
+
+Not every LLM/harness combination supports dispatching fresh-context subagents. If you cannot actually spin up parallel workers, run the same protocol **sequentially** as a single agent playing all three roles across turns:
+
+1. Play the coordinator: write `plan.md` and stop writing any other content.
+2. For each unit in the plan, in order, play a worker: read only the inputs your plan told you that unit needs, write its `<slug>_proposal.md` (and `<slug>_traceability.md` if applicable), then **forget the unit and move on**. Do not carry forward the content of the unit you just finished — the next unit should not have it in context.
+3. Between units, `ls output_from_opencode_to_verify/temp/` and confirm the previous unit's file exists before starting the next one. This is your progress checkpoint across compactions.
+4. When all units exist, play the merger exactly as described above.
+
+Sequential execution still gets the main benefit of the protocol: at no point are you holding more than one unit's content in working memory, and the filesystem remains the source of truth for what is done. A run that happens to execute sequentially is not a failure of the protocol — it is a legitimate execution mode.
+
+### If superpowers skills are available
+
+If your environment exposes a `Skill` tool and lists these skills, prefer them over ad-hoc versions of the same pattern:
+
+- `superpowers:subagent-driven-development` and `superpowers:dispatching-parallel-agents` — use these to dispatch per-unit workers in parallel.
+- `superpowers:writing-plans` — use this when the coordinator writes `plan.md`.
+- `superpowers:verification-before-completion` — the merger must invoke this before claiming the deliverable is done.
+
+**If your environment does not expose a `Skill` tool or these skills, the protocol above still applies.** The skills formalize the pattern; they do not replace it. A run with no skills available should still follow the coordinator → worker → merger flow (in parallel or sequentially) and still treat the filesystem as the source of truth for progress.
+
+### Final verification (mandatory, skills or no skills)
+
+Before the run ends, the merger — or the top-level agent if there is no merger — must:
+
+1. `ls output_from_opencode_to_verify/temp/` and confirm a `<slug>_proposal.md` file exists for every unit listed in `plan.md` (and a `<slug>_traceability.md` for every unit the plan marked as requiring traceability).
+2. Read the assembled `cmgc_proposal.md` and confirm every unit from `plan.md` is present and non-empty, in the correct order.
+3. Read the assembled `traceability.md` and confirm every unit that requires traceability has at least one row.
+4. **Check for merge-glue damage.** For each unit's top-level header, confirm it appears on a line that starts with `##` — not buried mid-line after the previous unit's last paragraph. A grep like `grep -n '^## ' cmgc_proposal.md` should return one line per unit. If the count is short, the merger glued files together without separators — go back and re-run the merge step with the shell recipe above.
+5. If any check fails, report exactly what is missing. Do not claim the run is complete.
 
 ---
 
